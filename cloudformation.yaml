@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Template to create an S3 bucket, OAC, and CloudFront Distribution
+
+Resources:
+  # 1. S3 Bucket
+  AssetsBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: 'my-react-bucket-1994'
+
+  # 2. S3 Bucket Policy
+  AssetsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AssetsBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontAccess
+            Effect: Allow
+            Action: "s3:GetObject"
+            Resource: !Join [ "", [ !GetAtt AssetsBucket.Arn, "/*" ]]
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Condition:
+              StringEquals:
+                "AWS:SourceArn": !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${AssetsDistribution}
+
+  # 3. CloudFront Origin Access Control (OAC)
+  CloudFrontOriginAccessControl:
+    Type: 'AWS::CloudFront::OriginAccessControl'
+    Properties:
+      OriginAccessControlConfig:
+        Name: 'aws-practitioner-for-js-cloudformation-oac'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # 4. CloudFront Distribution
+  AssetsDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html  # Serve React app's index.html
+        DefaultCacheBehavior:
+          TargetOriginId: AssetsBucketOrigin
+          ViewerProtocolPolicy: redirect-to-https  # Redirect HTTP to HTTPS
+          AllowedMethods:
+            - GET
+            - HEAD
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          Compress: true
+        Origins:
+          - Id: AssetsBucketOrigin
+            DomainName: !GetAtt AssetsBucket.RegionalDomainName  # Use RegionalDomainName for better compatibility
+            S3OriginConfig:
+              OriginAccessIdentity: "" # Deprecated; not required when using OriginAccessControlId
+            OriginAccessControlId: !GetAtt CloudFrontOriginAccessControl.Id
